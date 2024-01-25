@@ -91,18 +91,30 @@ class WikiTrainingLoader
     full_content
   end
 
-  # Gets a list of page titles linked from the base page
   def wiki_source_pages
-    # To handle more than 500 pages linked from the source page,
-    # we'll need to update this to use 'continue'.
+  
     query_params = { prop: 'links', titles: @wiki_base_page, pllimit: 500 }
-    response = WikiApi.new(MetaWiki.new).query(query_params)
-    begin
-      response.data['pages'].values[0]['links'].map { |page| page['title'] }
-    rescue StandardError
-      raise InvalidWikiContentError, "could not get links from '#{@wiki_base_page}'"
+    links = []
+  
+    until @continue == 'done'
+      response = WikiApi.new(MetaWiki.new).query(query_params.merge(plcontinue: @continue))
+  
+      begin
+        current_links = response.dig('pages', @wiki_base_page, 'links') || []
+        links.concat(current_links.map { |page| page['title'] })
+  
+        @continue = response['continue']&.fetch('plcontinue', 'done')
+      rescue StandardError => e
+        raise InvalidWikiContentError, "could not get links from '#{@wiki_base_page}': #{e.message}"
+      end
     end
+  
+    links
   end
+  
+
+  
+  
 
   def listed_wiki_source_pages
     wiki_source_pages.select { |page| @slug_list.include? slug_from(page) }
